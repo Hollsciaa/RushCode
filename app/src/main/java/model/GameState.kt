@@ -21,5 +21,6 @@ data class GameState(
     val pythonScriptCost: Double = 15.0,
     val stackOverflowCost: Double = 100.0,
     val bedrockSdkCost: Double = 500.0,
-    val alternantCost: Double = 2000.0
+    val alternantCost: Double = 2000.0,
+    val isRushModeActive: Boolean = false
 )

@@ -19,13 +19,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.cnam.rushcode.viewmodel.GameViewModel
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import fr.cnam.rushcode.sensor.ShakeDetector
 
 class MainActivity : ComponentActivity() {
 
     private val gameViewModel: GameViewModel by viewModels()
+    private lateinit var sensorManager: SensorManager
+    private lateinit var shakeDetector: ShakeDetector
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialisation du service matériel d'Android
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+
+        // Création de notre détecteur. Quand il s'active, il appelle le ViewModel !
+        shakeDetector = ShakeDetector {
+            gameViewModel.onShakeDetected()
+        }
+
         setContent {
             RushCodeTheme {
                 Surface(
@@ -36,6 +51,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Quand l'appli passe au premier plan : on allume le capteur
+    override fun onResume() {
+        super.onResume()
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        accelerometer?.let {
+            sensorManager.registerListener(shakeDetector, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    // Quand l'appli est en arrière-plan : on coupe le capteur pour sauver la batterie
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(shakeDetector)
     }
 }
 
@@ -65,6 +95,18 @@ fun GameScreen(viewModel: GameViewModel) {
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold
             )
+        }
+
+        // Alerte visuelle du Rush Mode
+        if (state.isRushModeActive) {
+            item {
+                Text(
+                    text = "🚨 RUSH MODE ACTIVÉ : +50 LDC ! 🚨",
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
         }
 
         // Compteur de LDC & Objectif

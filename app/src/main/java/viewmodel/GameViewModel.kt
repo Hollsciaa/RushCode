@@ -133,4 +133,30 @@ class GameViewModel : ViewModel() {
             linesOfCode = 0.0 // Reset des LDC pour le nouveau projet ou cumul, au choix (ici reset pour livrer le projet)
         )
     }
+
+    // Action déclenchée par le capteur (secousse)
+    fun onShakeDetected() {
+        _uiState.update { currentState ->
+            // Si on est endormi ou si le Rush Mode est déjà actif, on ignore
+            if (currentState.caffeine <= 0f || currentState.isRushModeActive) return@update currentState
+
+            // Bonus d'urgence : +50 LDC direct pour sauver la prod !
+            val newLdc = currentState.linesOfCode + 50.0
+
+            // On lance un chrono pour désactiver l'alerte visuelle au bout de 3 secondes
+            activateRushModeTimer()
+
+            currentState.copy(
+                linesOfCode = newLdc,
+                isRushModeActive = true
+            )
+        }
+    }
+
+    private fun activateRushModeTimer() {
+        viewModelScope.launch {
+            delay(3000L) // Le mode Rush dure 3 secondes
+            _uiState.update { it.copy(isRushModeActive = false) }
+        }
+    }
 }
