@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
 @Composable
 fun GameScreen(viewModel: GameViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -77,6 +78,7 @@ fun GameScreen(viewModel: GameViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -169,6 +171,54 @@ fun GameScreen(viewModel: GameViewModel) {
             }
         }
 
+        // BOUTON DE TEST API
+        item {
+            Button(
+                onClick = { viewModel.triggerBossEvent() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "🚨 TEST API : LE CHEF DÉBARQUE ! 🚨", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // L'AFFICHAGE DE L'APPEL API
+        if (state.isBossEventActive) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFCF6679)), // Rouge clair
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "LE CHEF EST LÀ ! DIVERSION !",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // L'excuse récupérée depuis Internet !
+                        Text(
+                            text = "\"${state.currentExcuse}\"",
+                            color = Color.Black,
+                            fontSize = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { viewModel.dismissBossEvent() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                        ) {
+                            Text("Chef reparti, retourner coder", color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+
         // Gros Bouton de Code (Action principale)
         item {
             Button(
@@ -241,6 +291,85 @@ fun GameScreen(viewModel: GameViewModel) {
                 canBuy = state.linesOfCode >= state.alternantCost,
                 onBuy = { viewModel.buyUpgrade("alternant") }
             )
+        }
+
+        // SECTION CLASSEMENT (API PERSO)
+        item {
+            Text(
+                text = "🏆 CLASSEMENT GLOBAL (API PERSO)",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.submitCurrentScore("Esteban - Dev") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Envoyer mon score", fontSize = 12.sp)
+                }
+
+                Button(
+                    onClick = { viewModel.fetchLeaderboard() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF03DAC6)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Charger Top", color = Color.Black, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // SECTION CLASSEMENT (AUTOMATIQUE)
+        item {
+            Text(
+                text = "🏆 CLASSEMENT GLOBAL EN DIRECT",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+
+        // Affichage de la liste dynamique du classement
+        if (state.isLoadingLeaderboard && state.leaderboardList.isEmpty()) {
+            item {
+                CircularProgressIndicator(color = Color(0xFF03DAC6))
+            }
+        } else {
+            items(state.leaderboardList.size) { index ->
+                val player = state.leaderboardList[index]
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF252525)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${index + 1}. ${player.name}",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Niv. ${player.level} (${player.linesOfCode.toInt()} LDC)",
+                            color = Color(0xFF03DAC6)
+                        )
+                    }
+                }
+            }
         }
     }
 }

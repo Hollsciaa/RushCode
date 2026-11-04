@@ -2,6 +2,9 @@ package fr.cnam.rushcode.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fr.cnam.rushcode.api.ApiClient
+import fr.cnam.rushcode.api.LeaderboardApiClient
+import fr.cnam.rushcode.api.LeaderboardEntry
 import fr.cnam.rushcode.model.GameState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -17,8 +20,10 @@ class GameViewModel : ViewModel() {
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
 
     init {
-        // Lancement de la Game Loop (tourne en continu en arrière-plan)
+        // Lancement de la Game Loop locale
         startGameLoop()
+        // Lancement de la synchronisation automatique du Leaderboard toutes les 5 secondes
+        startLeaderboardSyncLoop()
     }
 
     private fun startGameLoop() {
@@ -27,18 +32,17 @@ class GameViewModel : ViewModel() {
                 delay(1000L) // Toutes les 1 seconde
 
                 _uiState.update { currentState ->
-                    // Si le joueur est endormi (caféine à 0), pas de prod, ou malus
+                    // Si le joueur est endormi (caféine à 0), pas de prod
                     if (currentState.caffeine <= 0f) return@update currentState
 
                     // Calcul de la nouvelle quantité de LDC avec le passivePower (LPS)
                     val newLdc = currentState.linesOfCode + currentState.passivePower
 
-                    // Baisse douce de la caféine (ex: -0.5% par seconde)
+                    // Baisse douce de la caféine (-0.5% par seconde)
                     val newCaffeine = (currentState.caffeine - 0.5f).coerceAtLeast(0f)
 
                     // Vérification de la condition de victoire du niveau
                     if (newLdc >= currentState.targetLines) {
-                        // Passage au niveau supérieur automatique (on gère la transition ou l'incrément)
                         advanceToNextLevel(currentState.copy(linesOfCode = newLdc, caffeine = newCaffeine))
                     } else {
                         currentState.copy(linesOfCode = newLdc, caffeine = newCaffeine)
@@ -48,10 +52,21 @@ class GameViewModel : ViewModel() {
         }
     }
 
-    // Action lorsque le joueur clique gros sur l'écran pour coder
+    // Boucle de synchronisation avec l'API toutes les 5 secondes
+    private fun startLeaderboardSyncLoop() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                submitCurrentScore("Esteban - Dev")
+                fetchLeaderboard()
+                delay(5000L) // Attend 5 secondes avant la prochaine sync
+            }
+        }
+    }
+
+    // Action lorsque le joueur clique sur l'écran pour coder
     fun onCodeClicked() {
         _uiState.update { currentState ->
-            if (currentState.caffeine <= 0f) return@update currentState // Bloqué si endormi
+            if (currentState.caffeine <= 0f) return@update currentState
 
             val newLdc = currentState.linesOfCode + currentState.clickPower
             if (newLdc >= currentState.targetLines) {
@@ -62,7 +77,7 @@ class GameViewModel : ViewModel() {
         }
     }
 
-    // Achat d'un upgrade (ex: Script Python, StackOverflow, etc.)
+    // Achat d'un upgrade
     fun buyUpgrade(upgradeType: String) {
         _uiState.update { state ->
             when (upgradeType) {
@@ -71,8 +86,8 @@ class GameViewModel : ViewModel() {
                         state.copy(
                             linesOfCode = state.linesOfCode - state.pythonScriptCost,
                             pythonScriptCount = state.pythonScriptCount + 1,
-                            passivePower = state.passivePower + 2.0, // +2 LPS
-                            pythonScriptCost = state.pythonScriptCost * 1.15 // Coût exponentiel x1.15
+                            passivePower = state.passivePower + 2.0,
+                            pythonScriptCost = state.pythonScriptCost * 1.15
                         )
                     } else state
                 }
@@ -81,7 +96,7 @@ class GameViewModel : ViewModel() {
                         state.copy(
                             linesOfCode = state.linesOfCode - state.stackOverflowCost,
                             stackOverflowCount = state.stackOverflowCount + 1,
-                            passivePower = state.passivePower + 10.0, // +10 LPS
+                            passivePower = state.passivePower + 10.0,
                             stackOverflowCost = state.stackOverflowCost * 1.15
                         )
                     } else state
@@ -91,7 +106,7 @@ class GameViewModel : ViewModel() {
                         state.copy(
                             linesOfCode = state.linesOfCode - state.bedrockSdkCost,
                             bedrockSdkCount = state.bedrockSdkCount + 1,
-                            passivePower = state.passivePower + 50.0, // +50 LPS
+                            passivePower = state.passivePower + 50.0,
                             bedrockSdkCost = state.bedrockSdkCost * 1.15
                         )
                     } else state
@@ -101,7 +116,7 @@ class GameViewModel : ViewModel() {
                         state.copy(
                             linesOfCode = state.linesOfCode - state.alternantCost,
                             alternantCount = state.alternantCount + 1,
-                            passivePower = state.passivePower + 200.0, // +200 LPS
+                            passivePower = state.passivePower + 200.0,
                             alternantCost = state.alternantCost * 1.15
                         )
                     } else state
@@ -111,7 +126,7 @@ class GameViewModel : ViewModel() {
         }
     }
 
-    // Recharger la caféine (via une pause café)
+    // Recharger la caféine
     fun drinkCoffee() {
         _uiState.update { it.copy(caffeine = 100f) }
     }
@@ -130,20 +145,16 @@ class GameViewModel : ViewModel() {
             currentLevel = nextLevel,
             targetLines = nextTarget,
             levelName = nextName,
-            linesOfCode = 0.0 // Reset des LDC pour le nouveau projet ou cumul, au choix (ici reset pour livrer le projet)
+            linesOfCode = 0.0
         )
     }
 
-    // Action déclenchée par le capteur (secousse)
+    // Action déclenchée par le capteur (secousse accéléromètre)
     fun onShakeDetected() {
         _uiState.update { currentState ->
-            // Si on est endormi ou si le Rush Mode est déjà actif, on ignore
             if (currentState.caffeine <= 0f || currentState.isRushModeActive) return@update currentState
 
-            // Bonus d'urgence : +50 LDC direct pour sauver la prod !
             val newLdc = currentState.linesOfCode + 50.0
-
-            // On lance un chrono pour désactiver l'alerte visuelle au bout de 3 secondes
             activateRushModeTimer()
 
             currentState.copy(
@@ -155,8 +166,70 @@ class GameViewModel : ViewModel() {
 
     private fun activateRushModeTimer() {
         viewModelScope.launch {
-            delay(3000L) // Le mode Rush dure 3 secondes
+            delay(3000L)
             _uiState.update { it.copy(isRushModeActive = false) }
+        }
+    }
+
+    // Déclenche l'appel API public (JokeAPI)
+    fun triggerBossEvent() {
+        if (_uiState.value.isBossEventActive) return
+
+        _uiState.update { it.copy(isBossEventActive = true, currentExcuse = "Génération de l'excuse en cours...") }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = ApiClient.devJokeService.getDeveloperJoke()
+                _uiState.update { it.copy(currentExcuse = response.joke) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(currentExcuse = "C'est la faute de la connexion Wi-Fi, chef !") }
+            }
+        }
+    }
+
+    fun dismissBossEvent() {
+        _uiState.update { it.copy(isBossEventActive = false, currentExcuse = "") }
+    }
+
+    // Récupérer le classement depuis l'API Perso
+    fun fetchLeaderboard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val players = LeaderboardApiClient.service.getTopPlayers()
+                _uiState.update {
+                    it.copy(
+                        leaderboardList = players.sortedByDescending { p -> p.level },
+                        isLoadingLeaderboard = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingLeaderboard = false) }
+            }
+        }
+    }
+
+    // Envoyer son score (met à jour le joueur existant avec PUT ou crée avec POST)
+    fun submitCurrentScore(playerName: String = "Esteban - Dev") {
+        val current = _uiState.value
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entry = LeaderboardEntry(
+                    name = playerName,
+                    level = current.currentLevel,
+                    linesOfCode = current.linesOfCode
+                )
+
+                if (current.localPlayerId != null) {
+                    LeaderboardApiClient.service.updateScore(current.localPlayerId, entry)
+                } else {
+                    val response = LeaderboardApiClient.service.submitScore(entry)
+                    response.id?.let { id ->
+                        _uiState.update { it.copy(localPlayerId = id) }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }
